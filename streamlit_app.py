@@ -1,12 +1,14 @@
 import streamlit as st
 from langchain_openai import OpenAIEmbeddings
-from langchain_chroma import Chroma
+from streamlit_chromadb_connection import ChromadbConnection
 import pandas as pd
 import json
+import os
 import sys
 
 st.title("RAG Sample")
-class rag_estimate():
+
+class RAGEstimate:
     def __init__(self, df, mode):
         self.rules = df.rule
         self.mode = mode
@@ -20,8 +22,15 @@ class rag_estimate():
         self.database_to_json(self.rules_to_database())
 
     def rules_to_database(self):
-        database = Chroma(
-            persist_directory="./.data",
+        configuration = {
+            "client": "PersistentClient",
+            "path": "./.data"
+        }
+        
+        database = st.connection(
+            "chromadb",
+            type="ChromaDBConnection",
+            **configuration,
             embedding_function=self.embeddings
         )
         database.add_texts(self.rules)
@@ -33,14 +42,8 @@ class rag_estimate():
             json.dump(data, f, indent=4)
 
     def prompt(self, database):
-        #queryを飛ばし、関連したルールを１つの文章にする。
         docs = database.similarity_search(self.query_to_prompt())
-        documents_string = ""
-        for doc in docs:
-            documents_string += f"""
-            -----------------------
-            {doc.page_content}
-        """
+        documents_string = "\n".join([f"-----------------------\n{doc.page_content}" for doc in docs])
         st.write(documents_string)
         return documents_string
 
@@ -50,18 +53,22 @@ class rag_estimate():
     def query_to_prompt(self):
         if self.mode == "litt":
             query = st.text_input("表現を入力してください：")
-        elif sys.argv[1]:
+        elif len(sys.argv) > 1:
             query = sys.argv[1]
         else:
             query = input("表現を入力してください：")
         return query
 
-if __name__ == "__main__":
+def main():
     uploaded_file = st.file_uploader("CSVファイルをアップロードしてください")
     if uploaded_file is not None:
         df = pd.read_csv(uploaded_file)
         mode = "litt"
     else:
         df = pd.read_csv("rule1.csv")
-    rag = rag_estimate(df, mode)
+        mode = "default"
+    rag = RAGEstimate(df, mode)
     rag.run()
+
+if __name__ == "__main__":
+    main()
